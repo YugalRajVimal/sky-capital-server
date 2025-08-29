@@ -16,6 +16,9 @@ const pendingSubscriptionSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
+  amount: {
+    type: Number,
+  },
 });
 
 const PendingSubcriptionModel = mongoose.model(

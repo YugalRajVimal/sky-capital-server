@@ -9,10 +9,17 @@ import jwt from "jsonwebtoken";
 import WidhrawalRequestModel from "../../schemas/widhrawalRequest.schema.js";
 import RoyaltyPaidHistoryModel from "../../schemas/royaltyPaidHistory.schema.js";
 import ApprovedSubcriptionModel from "../../schemas/approvedSubscription.schema.js";
+import mongoose from "mongoose";
+import path, { parse } from "path";
+
+import { fileURLToPath } from "url";
+import { dirname } from "path";
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 const activeCronJobs = {}; // to store running jobs and prevent duplication
 
-const levelIncome = [0.1, 0.05, 0.04, 0.03, 0.02, 0.01, 0.01, 0.01, 0.01, 0.01];
+const levelIncome = [0.05, 0.03, 0.02];
 
 const cronJobLevels = [
   {
@@ -85,6 +92,19 @@ const cronJobLevels = [
     rewardPerDay: 15,
     totalDays: 60,
   },
+];
+
+const rewardTeamBusinessAmount = [
+  { level: 0, businessAmount: 5000, reward: 100 },
+  { level: 1, businessAmount: 10000, reward: 200 },
+  { level: 2, businessAmount: 20000, reward: 300 },
+  { level: 3, businessAmount: 40000, reward: 500 },
+  { level: 4, businessAmount: 70000, reward: 700 },
+  { level: 5, businessAmount: 100000, reward: 1000 },
+  { level: 6, businessAmount: 200000, reward: 2000 },
+  { level: 7, businessAmount: 500000, reward: 5000 },
+  { level: 8, businessAmount: 1000000, reward: 10000 },
+  { level: 9, businessAmount: 2500000, reward: 20000 },
 ];
 
 class AdminController {
@@ -628,7 +648,7 @@ class AdminController {
       // const requests = await PendingSubcriptionModel.find({});
       const requests = await PendingSubcriptionModel.find({}).populate({
         path: "userId",
-        select: "name email phoneNo _id",
+        select: "name email phoneNo _id hashString amount",
       });
 
       const pendingRequests = requests.map((request) => ({
@@ -1245,6 +1265,145 @@ class AdminController {
     }
   };
 
+  // checkAndPayReferBonusAmount = async (referrer, directTeamCount) => {
+  //   if (
+  //     directTeamCount >= 10 &&
+  //     directTeamCount < 20 &&
+  //     !referrer.referBonus1Paid
+  //   ) {
+  //     //Pay Refer Bonus 1 $30
+
+  //     if (!referrer.subscribed) {
+  //       referrer.pendingReferBonusIncome =
+  //         parseFloat(referrer.pendingReferBonusIncome) + 30;
+  //       referrer.pendingWallet = parseFloat(referrer.pendingWallet) + 30;
+  //     } else {
+  //       referrer.referBonusIncome = parseFloat(referrer.referBonusIncome) + 30;
+  //       referrer.mainWallet = parseFloat(referrer.mainWallet) + 30;
+  //       referrer.totalMainWallet = parseFloat(referrer.totalMainWallet) + 30;
+  //     }
+  //   } else if (
+  //     directTeamCount >= 20 &&
+  //     directTeamCount < 30 &&
+  //     !referrer.referBonus2Paid
+  //   ) {
+  //     //Pay Refer Bonus 1 $70
+
+  //     if (!referrer.subscribed) {
+  //       referrer.pendingReferBonusIncome =
+  //         parseFloat(referrer.pendingReferBonusIncome) + 70;
+  //       referrer.pendingWallet = parseFloat(referrer.pendingWallet) + 70;
+  //     } else {
+  //       referrer.referBonusIncome = parseFloat(referrer.referBonusIncome) + 70;
+  //       referrer.mainWallet = parseFloat(referrer.mainWallet) + 70;
+  //       referrer.totalMainWallet = parseFloat(referrer.totalMainWallet) + 70;
+  //     }
+  //   } else if (directTeamCount >= 30 && !referrer.referBonus3Paid) {
+  //     //Pay Refer Bonus 3 $150
+
+  //     if (!referrer.subscribed) {
+  //       referrer.pendingReferBonusIncome =
+  //         parseFloat(referrer.pendingReferBonusIncome) + 150;
+  //       referrer.pendingWallet = parseFloat(referrer.pendingWallet) + 150;
+  //     } else {
+  //       referrer.referBonusIncome = parseFloat(referrer.referBonusIncome) + 150;
+  //       referrer.mainWallet = parseFloat(referrer.mainWallet) + 150;
+  //       referrer.totalMainWallet = parseFloat(referrer.totalMainWallet) + 150;
+  //     }
+  //   }
+  //   await referrer.save();
+  // };
+
+  // checkAndPayReferAmount = async (amount, user) => {
+  //   let currentSponsorId = user.sponsorId;
+  //   let level = 0;
+
+  //   console.log(`Level income array length: ${levelIncome.length}`);
+
+  //   while (level < levelIncome.length && currentSponsorId) {
+  //     console.log(`Current level: ${level}`);
+  //     const referrer = await UserModel.findOne({ referalId: currentSponsorId });
+
+  //     if (!referrer) {
+  //       console.log(
+  //         `Referrer not found for currentSponsorId: ${currentSponsorId}`
+  //       );
+  //       break;
+  //     }
+
+  //     console.log(`Referrer found for currentSponsorId: ${currentSponsorId}`);
+
+  //     if (!referrer.subscribed) {
+  //       referrer.pendingWallet =
+  //         parseFloat(referrer.pendingWallet) +
+  //         parseFloat(levelIncome[level]) * amount;
+  //       referrer.pendingReferIncome =
+  //         parseFloat(referrer.pendingWallet) +
+  //         parseFloat(levelIncome[level]) * amount;
+  //     } else {
+  //       // Add income to the current referrer
+  //       referrer.mainWallet =
+  //         parseFloat(referrer.mainWallet) +
+  //         parseFloat(levelIncome[level]) * amount;
+
+  //       referrer.totalMainWalletIncome =
+  //         parseFloat(referrer.totalMainWalletIncome) +
+  //         parseFloat(levelIncome[level]) * amount;
+
+  //       referrer.referIncome =
+  //         parseFloat(referrer.referIncome) +
+  //         parseFloat(levelIncome[level]) * amount;
+  //     }
+
+  //     console.log(
+  //       `Referrer ${referrer.name} (${
+  //         referrer.referalId
+  //       }) at level ${level} received ${levelIncome[level] * amount} into ${
+  //         referrer.subscribed ? "mainWallet" : "pendingWallet"
+  //       }. New balance: ${
+  //         referrer.subscribed ? referrer.mainWallet : referrer.pendingWallet
+  //       }`
+  //     );
+
+  //     if (
+  //       !referrer?.referredUserByLevel[level]?.some(
+  //         (entry) => entry.userId === user._id
+  //       )
+  //     ) {
+  //       const referredUserEntry = {
+  //         userId: user._id,
+  //         date: new Date(),
+  //         reward: parseFloat(levelIncome[level]) * amount,
+  //       };
+
+  //       if (!referrer.referredUserByLevel[level]) {
+  //         referrer.referredUserByLevel[level] = [];
+  //       }
+  //       referrer.referredUserByLevel[level].push(referredUserEntry);
+  //       referrer.markModified("referredUserByLevel");
+
+  //       console.log(`Added new referred user entry for level ${level}.`);
+  //     }
+
+  //     await referrer.save();
+
+  //     if (level == 0) {
+  //       const directTeamCount = referrer.referredUserByLevel[0]?.length || 0;
+  //       await this.checkAndPayReferBonusAmount(referrer, directTeamCount);
+  //     }
+
+  //     // Stop if admin is reached
+  //     if (referrer.referalId === "FTR000001") {
+  //       console.log(`Reached admin level, stopping the process.`);
+  //       break;
+  //     }
+
+  //     // Move to next level's sponsor
+  //     currentSponsorId = referrer.sponsorId; // or referrer.referredById if using that name
+  //     level++;
+  //   }
+  // };
+
   payDirectIncome = async (sponsorId, userId) => {
     const user = await UserModel.findById(userId);
 
@@ -1692,108 +1851,447 @@ class AdminController {
   //   }
   // };
 
+  // updateROIIncome = async (user) => {
+  //   console.log("updateROIIncome called for user:", user._id);
+  //   console.log(
+  //     "User lastInvestmentDoneOnDate:",
+  //     user.lastInvestmentDoneOnDate
+  //   );
+
+  //   const lastInvestment = user.lastInvestment;
+  //   console.log("User lastInvestment:", lastInvestment);
+
+  //   // Normalize start and end dates
+  //   const start = new Date(user.lastInvestmentDoneOnDate);
+  //   const end = new Date();
+  //   start.setHours(0, 0, 0, 0);
+  //   end.setHours(0, 0, 0, 0);
+  //   console.log("Normalized start date (investment date):", start);
+  //   console.log("Normalized end date (current date):", end);
+
+  //   // Exclude start date
+  //   start.setDate(start.getDate() + 1);
+  //   console.log("Start date after excluding investment date:", start);
+
+  //   if (start > end) {
+  //     console.log("Start date is after end date, returning 0 working days.");
+  //     return 0;
+  //   }
+
+  //   // Total days difference (inclusive)
+  //   const totalDays = Math.floor((end - start) / (1000 * 60 * 60 * 24)) + 1;
+  //   console.log("Total days difference (inclusive):", totalDays);
+
+  //   // Full weeks and remaining days
+  //   const fullWeeks = Math.floor(totalDays / 7);
+  //   let workingDays = fullWeeks * 5;
+  //   console.log("Full weeks:", fullWeeks);
+  //   console.log("Working days from full weeks:", workingDays);
+
+  //   // Handle remaining days
+  //   const remainingDays = totalDays % 7;
+  //   const startDay = start.getDay(); // 0=Sunday ... 6=Saturday
+  //   console.log("Remaining days:", remainingDays);
+  //   console.log("Start day of the week (0=Sun, 6=Sat):", startDay);
+
+  //   for (let i = 0; i < remainingDays; i++) {
+  //     const day = (startDay + i) % 7;
+  //     console.log(
+  //       `Checking day ${i + 1} of remaining days. Actual day of week: ${day}`
+  //     );
+  //     if (day !== 0 && day !== 6) {
+  //       // 0 is Sunday, 6 is Saturday
+  //       workingDays++;
+  //       console.log(
+  //         `Day ${day} is a working day. workingDays incremented to: ${workingDays}`
+  //       );
+  //     } else {
+  //       console.log(`Day ${day} is a weekend. No increment.`);
+  //     }
+  //   }
+
+  //   console.log("Final calculated working days:", workingDays);
+
+  //   let dailyRoiPercentage = 0;
+  //   if (lastInvestment >= 100 && lastInvestment <= 999) {
+  //     dailyRoiPercentage = 0.04; // 0.40%
+  //   } else if (lastInvestment >= 1000 && lastInvestment <= 4999) {
+  //     dailyRoiPercentage = 0.05; // 0.50%
+  //   } else if (lastInvestment >= 5000) {
+  //     dailyRoiPercentage = 0.06; // 0.60%
+  //   }
+  //   console.log(
+  //     "Daily ROI Percentage for last investment:",
+  //     dailyRoiPercentage
+  //   );
+
+  //   //Pay ROI Income
+  //   const potentialROIIncome =
+  //     workingDays * (lastInvestment * dailyRoiPercentage);
+  //   const maxAllowedROI = lastInvestment * 2;
+  //   const totalROIIncomeTillNow = Math.min(potentialROIIncome, maxAllowedROI);
+
+  //   user.roiWallet = parseFloat(totalROIIncomeTillNow);
+  //   user.workingDaysFromLastInvestmentTillNow = parseFloat(workingDays);
+
+  //   //Earned 2x of there investment - ReSubscribe to Earn Further
+  //   if (potentialROIIncome >= maxAllowedROI) {
+  //     user.subscribed = false;
+  //     user.workingDaysFromLastInvestmentTillNow = parseFloat(0);
+  //   }
+  // };
+
+  checkAndPayRewardTeamBusinessAmount = async (userId) => {
+    const user = await UserModel.findById(userId);
+    if (!user) {
+      console.error(`User with ID ${userId} not found.`);
+      return; // Or throw an error, depending on desired behavior
+    }
+    const overAllIncomeTillNow =
+      parseFloat(user.mainWallet) + parseFloat(user.roiWallet);
+
+    const directTeamUserIds = user.referredUserHistory.map(
+      (entry) => entry.userId
+    );
+
+    const directTeamMembers = await UserModel.find({
+      _id: { $in: directTeamUserIds },
+    });
+
+    const directTeamIncomeData = directTeamMembers.map((member) => {
+      const memberOverAllIncome =
+        parseFloat(member.mainWallet || 0) + parseFloat(member.roiWallet || 0);
+      return {
+        userId: member._id,
+        name: member.name,
+        overAllIncome: memberOverAllIncome,
+      };
+    });
+
+    // You can now use directTeamIncomeData for further calculations or checks
+    // For example, to sum up the total income of the direct team:
+    const totalDirectTeamBusiness = directTeamIncomeData.reduce(
+      (sum, member) => sum + member.overAllIncome,
+      0
+    );
+
+    let qualifiedRewardLevel = null;
+    for (let i = rewardTeamBusinessAmount.length - 1; i >= 0; i--) {
+      const rewardLevel = rewardTeamBusinessAmount[i];
+      const { level, businessAmount, reward } = rewardLevel;
+
+      // Condition 1: referrer overall income >= businessAmount
+      const referrerMeetsIncome = overAllIncomeTillNow >= businessAmount;
+
+      // Condition 2: total direct team business >= businessAmount
+      const teamMeetsBusiness = totalDirectTeamBusiness >= businessAmount;
+
+      // Condition 3: at least one direct team member has overall income >= businessAmount / 2
+      const oneMemberMeetsHalfIncome = directTeamIncomeData.some(
+        (member) => member.overAllIncome >= businessAmount / 2
+      );
+
+      if (
+        referrerMeetsIncome &&
+        teamMeetsBusiness &&
+        oneMemberMeetsHalfIncome
+      ) {
+        qualifiedRewardLevel = rewardLevel;
+        break; // Found the highest applicable level, no need to check lower levels
+      }
+    }
+
+    if (qualifiedRewardLevel) {
+      console.log(
+        `User qualifies for Reward Team Business Amount Level ${qualifiedRewardLevel.level}:`
+      );
+      console.log(
+        `  Required Business Amount: ${qualifiedRewardLevel.businessAmount}`
+      );
+      console.log(`  Reward: ${qualifiedRewardLevel.reward}`);
+
+      // Check if the reward for this level has already been paid
+      if (
+        !user.rewardTeamBusinessIncomeLevelPaidFlag[qualifiedRewardLevel.level]
+      ) {
+        if (!user.subscribed) {
+          user.pendingRewardTeamBusinessIncome += qualifiedRewardLevel.reward;
+          user.pendingWallet += qualifiedRewardLevel.reward;
+          console.log(
+            `  Reward of ${qualifiedRewardLevel.reward} added to pending for user ${user._id}.`
+          );
+        } else {
+          user.rewardTeamBusinessIncome += qualifiedRewardLevel.reward;
+          user.mainWallet += qualifiedRewardLevel.reward;
+          user.totalMainWalletIncome += qualifiedRewardLevel.reward;
+          console.log(
+            `  Reward of ${qualifiedRewardLevel.reward} paid to main wallet for user ${user._id}.`
+          );
+        }
+        user.rewardTeamBusinessIncomeLevelPaidFlag[
+          qualifiedRewardLevel.level
+        ] = true;
+        user.markModified("rewardTeamBusinessIncomeLevelPaidFlag");
+        await user.save();
+        console.log(
+          `  Flag for Reward Team Business Amount Level ${qualifiedRewardLevel.level} set to true for user ${user._id}.`
+        );
+      } else {
+        console.log(
+          `  Reward for Level ${qualifiedRewardLevel.level} already paid to user ${user._id}.`
+        );
+      }
+    } else {
+      console.log(
+        "User does not qualify for any Reward Team Business Amount level based on current criteria."
+      );
+    }
+
+    console.log(`Total business from direct team: ${totalDirectTeamBusiness}`);
+    console.log(`User's overall income: ${overAllIncomeTillNow}`);
+  };
+
+  checkAndPayReferBonusAmount = async (referrer, directTeamCount, session) => {
+    const bonusTiers = [
+      { min: 10, max: 20, amount: 30, flag: "referBonus1Paid" },
+      { min: 20, max: 30, amount: 70, flag: "referBonus2Paid" },
+      { min: 30, max: Infinity, amount: 150, flag: "referBonus3Paid" },
+    ];
+
+    for (const tier of bonusTiers) {
+      if (
+        directTeamCount >= tier.min &&
+        directTeamCount < tier.max &&
+        !referrer[tier.flag]
+      ) {
+        const update = {
+          $set: { [tier.flag]: true },
+        };
+
+        if (!referrer.subscribed) {
+          update.$inc = {
+            pendingReferBonusIncome: tier.amount,
+            pendingWallet: tier.amount,
+          };
+        } else {
+          update.$inc = {
+            referBonusIncome: tier.amount,
+            mainWallet: tier.amount,
+            totalMainWallet: tier.amount,
+          };
+        }
+
+        await UserModel.updateOne({ _id: referrer._id }, update, { session });
+
+        break; // only one tier applies
+      }
+    }
+  };
+
+  checkAndPayReferAmount = async (amount, user, session) => {
+    let currentSponsorId = user.sponsorId;
+    let level = 0;
+
+    const bulkOps = [];
+
+    while (level < levelIncome.length && currentSponsorId) {
+      const referrer = await UserModel.findOne(
+        { referalId: currentSponsorId },
+        null,
+        { session }
+      );
+
+      if (!referrer) break;
+
+      const reward = parseFloat(levelIncome[level]) * amount;
+      const update = { $inc: {} };
+
+      if (!referrer.subscribed) {
+        update.$inc.pendingWallet = reward;
+        update.$inc.pendingReferIncome = reward;
+      } else {
+        update.$inc.mainWallet = reward;
+        update.$inc.totalMainWalletIncome = reward;
+        update.$inc.referIncome = reward;
+      }
+
+      // ✅ atomic set for referredUserByLevel
+      update.$addToSet = {
+        [`referredUserByLevel.${level}`]: {
+          userId: user._id,
+          date: new Date(),
+          reward,
+        },
+      };
+
+      bulkOps.push({
+        updateOne: {
+          filter: { _id: referrer._id },
+          update,
+        },
+      });
+
+      if (referrer.referalId === "FTR000001") break; // stop at admin
+
+      currentSponsorId = referrer.sponsorId;
+      level++;
+    }
+
+    if (bulkOps.length > 0) {
+      await UserModel.bulkWrite(bulkOps, { session });
+    }
+  };
+
   approveSubscription = async (req, res) => {
-    const role = req.user.role;
-    if (role != "Admin") {
+    if (req.user.role !== "Admin") {
       return res.status(401).json({ message: "Unauthorized" });
     }
 
-    const userId = req.body.userId;
+    const { userId } = req.body;
+    const session = await mongoose.startSession();
 
     try {
-      const admin = await AdminModel.findOne({}); // Find the admin to get the subscription amount.
-      if (!admin) {
-        return res.status(404).json({ message: "Admin not found" }); // Return an error if the admin is not found.
+      session.startTransaction();
+
+      const admin = await AdminModel.findOne({}, null, { session });
+      if (!admin) throw new Error("Admin not found");
+
+      const pendingSubs = await PendingSubcriptionModel.findOne(
+        { userId },
+        null,
+        {
+          session,
+        }
+      );
+      if (!pendingSubs) throw new Error("Pending subscription not found");
+
+      const user = await UserModel.findById(userId, null, { session });
+      if (!user) throw new Error("User not found");
+
+      const now = new Date();
+
+      // 1. Update Admin Turnover
+      await AdminModel.updateOne(
+        { _id: admin._id },
+        { $inc: { companyTurnover: parseFloat(pendingSubs.amount) } },
+        { session }
+      );
+
+      // 2. Update User Subscription
+      await UserModel.updateOne(
+        { _id: user._id },
+        {
+          $set: {
+            subscribed: true,
+            subscribedOn: now,
+            lastInvestment: parseFloat(pendingSubs.amount),
+            lastInvestmentDoneOnDate: now,
+          },
+          $inc: {
+            investment: parseFloat(pendingSubs.amount),
+          },
+        },
+        { session }
+      );
+
+      // 3. Referrer History + Referral Income
+      if (user.sponsorId) {
+        const referrer = await UserModel.findOne(
+          { referalId: user.sponsorId },
+          null,
+          { session }
+        );
+        if (referrer) {
+          await UserModel.updateOne(
+            { _id: referrer._id },
+            {
+              $addToSet: {
+                referredUserHistory: { date: now, userId: user._id },
+              },
+            },
+            { session }
+          );
+
+          const directTeamCount =
+            (referrer.referredUserHistory?.length || 0) + 1;
+
+          await this.checkAndPayReferBonusAmount(
+            referrer,
+            directTeamCount,
+            session
+          );
+
+          await this.checkAndPayReferAmount(pendingSubs.amount, user, session);
+        }
       }
-      const subscriptionAmount = admin.subscriptionAmount; // Get the subscription amount from the admin.
 
-      // const today = new Date();
-      // const todayOnly = new Date(today.toISOString().slice(0, 10));
-      // Check if entry already exists for today
-      // const existingEntry = admin.companyTurnoverByDate.find(
-      //   (entry) =>
-      //     new Date(entry.date).toISOString().slice(0, 10) ===
-      //     todayOnly.toISOString().slice(0, 10)
-      // );
+      await UserModel.updateOne(
+        { _id: user._id },
+        {
+          $inc: {
+            mainWallet: user.pendingWallet,
+            referBonusIncome: user.pendingReferBonusIncome,
+            referIncome: user.pendingReferIncome,
+            rewardTeamBusinessIncome: user.pendingRewardTeamBusinessIncome,
+          },
+          $set: {
+            pendingWallet: 0,
+            pendingReferBonusIncome: 0,
+            pendingReferIncome: 0,
+            pendingRewardTeamBusinessIncome: 0,
+          },
+        },
+        { session }
+      );
 
-      // if (existingEntry) {
-      //   // Update the existing amount
-      //   existingEntry.amount += parseFloat(subscriptionAmount);
-      // } else {
-      //   // Create a new entry
-      //   admin.companyTurnoverByDate.push({
-      //     date: todayOnly,
-      //     amount: parseFloat(subscriptionAmount),
-      //   });
-      // }
+      // 4. Approve Subscription
+      await ApprovedSubcriptionModel.create(
+        [
+          {
+            userId: userId,
+            screenshotPath: user.paymentScreenshotPath,
+            hashString: pendingSubs.hashString,
+            amount: pendingSubs.amount,
+          },
+        ],
+        { session }
+      );
 
-      admin.companyTurnover =
-        parseFloat(admin.companyTurnover) + parseFloat(subscriptionAmount);
-
-      await admin.save();
-
-      // Assuming user is defined and accessible within this scope
-      const user = await UserModel.findById(userId);
-
-      user.subscribed = true;
-
-      const tempDate = new Date();
-      user.subscribedOn = tempDate;
-      // user.nextRoyaltyDateFlagFrom = tempDate;
-      // const totalWorldUsers = await UserModel.countDocuments({
-      //   subscribed: true,
-      // });
-      // user.worldUsersWhenSubscribed = totalWorldUsers;
-      await user.save();
-
-      // await this.payDirectIncome(user.sponsorId, user.id);
-      // await this.payLevelIncome(user.sponsorId, user.id);
-
-      user.referalEnabled = true;
-      user.investment =
-        parseFloat(user.investment) + parseFloat(subscriptionAmount);
-
-      const referrer = await UserModel.findOne({ referalId: user.sponsorId });
-      if (
-        referrer &&
-        !referrer.referredUserHistory.some(
-          (history) => history.userId.toString() === user._id.toString()
-        )
-      ) {
-        referrer.referredUserHistory.push({
-          date: new Date(),
-          userId: user._id,
-        });
-        await referrer.save();
-
-        // await this.checkAndPayRoyaltyIncome(user.sponsorId);
-        await this.checkAndPayRoyalty(user.sponsorId);
-      }
-
-      const approvedSubscription = new ApprovedSubcriptionModel({
-        userId: userId,
-        screenshotPath: user.paymentScreenshotPath,
-      });
-      await approvedSubscription.save();
-
-      const pendingSubscription =
-        await PendingSubcriptionModel.findOneAndDelete({
+      // 5. Remove Pending Subscription
+      const deletedPending = await PendingSubcriptionModel.findOneAndDelete(
+        {
           userId: userId,
           screenshotPath: user.paymentScreenshotPath,
-        });
+        },
+        { session }
+      );
 
-      user.subscriptionHistory.push({
-        date: new Date(),
-        amount: subscriptionAmount,
-        hashString: pendingSubscription.hashString,
-      });
+      // 6. Update User Subscription History (only if pending existed)
+      if (deletedPending) {
+        await UserModel.updateOne(
+          { _id: user._id },
+          {
+            $push: {
+              subscriptionHistory: {
+                date: now,
+                amount: deletedPending.amount,
+                hashString: deletedPending.hashString,
+              },
+            },
+          },
+          { session }
+        );
+      }
 
-      await user.save();
+      await session.commitTransaction();
+      session.endSession();
 
       return res
         .status(200)
         .json({ message: "Subscription approved successfully" });
     } catch (error) {
+      await session.abortTransaction();
+      session.endSession();
       console.error("Error approving subscription:", error);
       return res.status(500).json({ message: "Internal Server Error" });
     }
@@ -1835,10 +2333,20 @@ class AdminController {
       if (!subscription) {
         return res.status(404).json({ message: "Subscription not found" });
       }
-      // Assuming there's a function to delete a file from the file system
-      deleteUploadedFile({
-        path: subscription.screenshotPath,
-      });
+
+      const filePath = path.join(
+        __dirname,
+        "..",
+        "..",
+        "uploads/payments",
+        subscription.screenshotPath
+      );
+      deleteUploadedFile({ path: filePath });
+
+      // deleteUploadedFile({
+      //   path: `/uploads/payments/${subscription.screenshotPath}`,
+      // });
+
       return res.status(200).json({
         message: "Subscription and associated file deleted successfully",
       });

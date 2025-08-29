@@ -7,17 +7,12 @@ import { connectUsingMongoose } from "./config/mongoose.config.js";
 import UserModel from "./schemas/user.schema.js";
 import AdminController from "./Controllers/AdminControllers/AdminController.js";
 
-import { fileURLToPath } from 'url';
-import { dirname } from 'path';
-import path from 'path';
+import { fileURLToPath } from "url";
+import { dirname } from "path";
+import path from "path";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-
-
-
-
-
 
 const app = express();
 
@@ -58,11 +53,15 @@ app.get("/download/:encodedPath", (req, res) => {
   });
 });
 
-
 const adminController = new AdminController();
 
 app.listen(port, async () => {
   console.log(`Server running at http://localhost:${port}/`);
   connectUsingMongoose();
-  adminController.resumeCronJobs();
+  // adminController.updateROIIncome({
+  //   _id: "test_user_id_for_roi", // Added a dummy user ID as it's logged in the function
+  //   lastInvestmentDoneOnDate: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000), // Corrected to a Date object representing 10 days ago for meaningful ROI calculation
+  //   lastInvestment: 1000, // Added a dummy lastInvestment amount as it's logged in the function
+  // });
+  // adminController.resumeCronJobs();
 });

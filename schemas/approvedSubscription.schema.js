@@ -9,6 +9,12 @@ const approvedSubscriptionSchema = new mongoose.Schema({
   screenshotPath: {
     type: String,
   },
+  hashString: {
+    type: String,
+  },
+  amount: {
+    type: Number,
+  },
   date: {
     type: Date,
     default: Date.now,

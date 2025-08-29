@@ -13,6 +13,8 @@ import TransferToMainWalletHistoryModel from "../../schemas/transferToMainWallet
 import RoyaltyPaidHistoryModel from "../../schemas/royaltyPaidHistory.schema.js";
 import TransactionHashModel from "../../schemas/TransactionHash.js";
 
+import mongoose from "mongoose";
+
 class CustomerController {
   home = async (req, res) => {
     res.json({ message: "Hello Customer" });
@@ -489,185 +491,130 @@ class CustomerController {
     return code;
   };
 
+  // ---- Utility: calculate working days between two dates (exclusive of start, inclusive of end) ----
+  calculateWorkingDays(startDate, endDate) {
+    if (!startDate || !endDate) return 0;
+
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    start.setHours(0, 0, 0, 0);
+    end.setHours(0, 0, 0, 0);
+
+    if (start >= end) return 0;
+
+    const nextDay = new Date(start);
+    nextDay.setDate(start.getDate() + 1);
+
+    const totalDays = Math.floor((end - nextDay) / 86400000) + 1;
+    const fullWeeks = Math.floor(totalDays / 7);
+
+    let workingDays = fullWeeks * 5;
+    const remaining = totalDays % 7;
+    const startDay = nextDay.getDay();
+
+    for (let i = 0; i < remaining; i++) {
+      const day = (startDay + i) % 7;
+      if (day !== 0 && day !== 6) workingDays++;
+    }
+
+    return workingDays;
+  }
+
+  // ---- ROI Calculation ----
+  updateROIIncome = async (id) => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
+    try {
+      const user = await UserModel.findById(id).session(session);
+      if (!user || !user.lastInvestment || !user.lastInvestmentDoneOnDate) {
+        await session.abortTransaction();
+        session.endSession();
+        return null;
+      }
+
+      const workingDays = this.calculateWorkingDays(
+        user.lastInvestmentDoneOnDate,
+        new Date()
+      );
+      const lastInvestment = Number(user.lastInvestment);
+
+      let dailyRoiPercentage = 0;
+      if (lastInvestment >= 100 && lastInvestment <= 999)
+        dailyRoiPercentage = 0.04;
+      else if (lastInvestment >= 1000 && lastInvestment <= 4999)
+        dailyRoiPercentage = 0.05;
+      else if (lastInvestment >= 5000) dailyRoiPercentage = 0.06;
+
+      const potentialROIIncome =
+        workingDays * (lastInvestment * dailyRoiPercentage);
+      const maxAllowedROI = lastInvestment * 2;
+      const totalROIIncomeTillNow = Math.min(potentialROIIncome, maxAllowedROI);
+
+      // Apply updates atomically inside the transaction
+      const updatedUser = await UserModel.findByIdAndUpdate(
+        id,
+        {
+          $set: {
+            roiWallet: totalROIIncomeTillNow,
+
+            subscribed: potentialROIIncome >= maxAllowedROI ? false : true,
+          },
+        },
+        { new: true, session } // return updated doc
+      );
+
+      await session.commitTransaction();
+      session.endSession();
+
+      return updatedUser;
+    } catch (error) {
+      await session.abortTransaction();
+      session.endSession();
+      throw error;
+    }
+  };
+
+  // ---- Controller ----
   getCustomerProfileData = async (req, res) => {
     const { id } = req.user;
+
     try {
+      // Update ROI first (transaction safe)
+      try {
+        await this.updateROIIncome(id);
+      } catch (roiError) {
+        console.warn("ROI update failed, continuing:", roiError.message);
+      }
+      // const updatedUser = await this.updateROIIncome(id);
+
       const user = await UserModel.findById(id)
         .populate("referredUserHistory.userId", "subscribed")
         .lean();
 
-      if (!user) {
-        return res.status(404).json({ message: "User not found" });
-      }
+      if (!user) return res.status(404).json({ message: "User not found" });
 
-      const userData = { ...user };
+      // Convert to plain object safely
+      const userData = user;
       delete userData.password;
 
-      // Ensure default values
-      userData.referalEnabled = userData.referalEnabled ?? false;
       userData.subscribed = userData.subscribed ?? false;
       userData.referredUserHistory = userData.referredUserHistory || [];
       userData.referredUserByLevel = userData.referredUserByLevel || {};
-      userData.cronJobByLevelIncome = userData.cronJobByLevelIncome || {};
-      userData.tenDaysRoyaltyReward = userData.tenDaysRoyaltyReward || 0;
-      userData.weekRoyaltyReward = userData.weekRoyaltyReward || 0;
-
-      if (!userData.referalEnabled || !userData.subscribed) {
-        delete userData.referalId;
-      }
-
-      const referredUsers = userData.referredUserHistory;
-
-      const directTeamCountActive = referredUsers.filter(
-        (entry) => entry.userId?.subscribed === true
-      ).length;
-
-      const directTeamCountNonActive = await UserModel.countDocuments({
-        sponsorId: user.referalId,
-        subscribed: false,
-      });
-
-      const directTeamIncome = referredUsers.length;
-
-      const userDoc = await UserModel.findById(id).lean();
-
-      const allLevelReferrals = [];
-      for (let level = 0; level <= 9; level++) {
-        const levelEntries = userDoc.referredUserByLevel?.[level] || [];
-        allLevelReferrals.push(...levelEntries);
-      }
-
-      let totalUnsubscribedCount = 0;
-      const unsubscribedCountByLevel = {};
-
-      for (const level in user.allReferredUserByLevel) {
-        const referredUsers = user.allReferredUserByLevel[level];
-
-        const unsubscribedUsers = await Promise.all(
-          referredUsers.map(async (entry) => {
-            const referredUser = await UserModel.findById(entry.userId)
-              .select("subscribed")
-              .lean();
-
-            if (referredUser && referredUser.subscribed === false) {
-              return true; // Non-active
-            }
-            return false; // Active or not found
-          })
-        );
-
-        const levelUnsubscribedCount = unsubscribedUsers.filter(Boolean).length;
-
-        unsubscribedCountByLevel[level] = levelUnsubscribedCount;
-        totalUnsubscribedCount += levelUnsubscribedCount;
-      }
-
-      console.log("Unsubscribed count by level:", unsubscribedCountByLevel);
-      console.log("Total unsubscribed users:", totalUnsubscribedCount);
-
-      const userIds = allLevelReferrals.map((entry) => entry.userId);
-
-      const [subscribedUsers, unsubscribedUsers] = await Promise.all([
-        UserModel.find({ _id: { $in: userIds }, subscribed: true }).select(
-          "_id"
-        ),
-        UserModel.find({ _id: { $in: userIds }, subscribed: false }).select(
-          "_id"
-        ),
-      ]);
-
-      const subscribedUserIds = new Set(
-        subscribedUsers.map((u) => u._id.toString())
-      );
-
-      const subscribedLevelUserCount = allLevelReferrals.filter((entry) =>
-        subscribedUserIds.has(entry.userId.toString())
-      ).length;
-
-      const levelTeamCountActive = subscribedLevelUserCount;
-
-      let levelTeamIncome = 0;
-      if (userData.referredUserByLevel) {
-        levelTeamIncome = Object.values(
-          userData.referredUserByLevel || {}
-        ).reduce(
-          (acc, level) =>
-            acc +
-            level.reduce(
-              (sum, user) => sum + (user.reward ? user.reward : 0),
-              0
-            ),
-          0
-        );
-      }
-
-      const worldLegTeamCountActive = await UserModel.countDocuments({
-        subscribed: true,
-        subscribedOn: { $gt: user.subscribedOn },
-      });
-      const worldLegTeamCountNonActive = await UserModel.countDocuments({
-        subscribed: false,
-        subscribedOn: { $gt: user.subscribedOn },
-      });
-
-      const worldLegTeamIncome = Object.values(
-        userData.cronJobByLevelIncome || {}
-      ).reduce((acc, level) => acc + level, 0);
-
-      let royaltyIncome = 0;
-      if (userData.tenDaysRoyaltyPaid) {
-        royaltyIncome = userData.tenDaysRoyaltyReward;
-      } else if (userData.weekRoyaltyPaid) {
-        royaltyIncome = userData.weekRoyaltyReward;
-      }
-
-      const totalIncome = royaltyIncome + worldLegTeamIncome + levelTeamIncome;
-
-      const admin = await AdminModel.findOne({});
-      if (!admin) {
-        return res.status(404).json({ message: "Admin not found" });
-      }
-
-      const companyTurnOver = admin.companyTurnover;
 
       const withdrawalList = await WidhrawalRequestModel.find({
         userId: userData._id,
         status: "approved",
       });
 
-      const totalSuccessPayment = withdrawalList.reduce(
+      userData.totalWithdrawalAmount = withdrawalList.reduce(
         (acc, withdrawal) => acc + parseFloat(withdrawal.requestAmount),
         0
       );
 
-      // Cron job resume
-      // console.log("checking");
-      const adminController = new AdminController();
-
-      await adminController.startCronJobs(user._id);
-      await adminController.resumeCronJobs();
-
-      // Attach calculated data
-      userData.totalWithdrawalAmount = totalSuccessPayment;
-      userData.directTeamCount = directTeamCountActive;
-      userData.directTeamCountNonActive = directTeamCountNonActive;
-      userData.directTeamIncome = directTeamIncome;
-
-      userData.levelTeamCount = levelTeamCountActive;
-      userData.levelTeamCountNonActive = totalUnsubscribedCount;
-      userData.levelTeamIncome = levelTeamIncome;
-
-      userData.worldLegTeamCount = worldLegTeamCountActive;
-      userData.worldLegTeamCountNonActive = worldLegTeamCountNonActive;
-      userData.worldLegTeamIncome = worldLegTeamIncome;
-
-      userData.royaltyIncome = royaltyIncome;
-      userData.totalIncome = totalIncome;
-      userData.companyTurnOver = companyTurnOver;
-
       return res.status(200).json(userData);
     } catch (error) {
-      console.error(error);
+      console.error("getCustomerProfileData error:", error);
       res.status(500).json({ message: "Internal Server Error" });
     }
   };
@@ -691,10 +638,11 @@ class CustomerController {
         joinedOn: user.subscribedOn,
         idType: user.idType,
         bankId: user.bankId,
+        referalId: user.referalId,
       };
-      if (user.referalEnabled) {
-        profileDetails.referalId = user.referalId;
-      }
+      // if (user.referalEnabled) {
+      //   profileDetails.referalId = user.referalId;
+      // }
       return res.status(200).json(profileDetails);
     } catch (error) {
       console.error(error);
@@ -799,13 +747,10 @@ class CustomerController {
           const populatedEntries = await Promise.all(
             entries.map(async (entry) => {
               const userDoc = await UserModel.findById(entry.userId).select(
-                "name email phoneNo sponsorId sponsorName referalId subscribed subscribedOn referalEnabled"
+                "name email phoneNo sponsorId sponsorName referalId subscribed subscribedOn"
               );
 
               const userObj = userDoc?.toObject();
-              if (!userObj?.referalEnabled) {
-                delete userObj?.referalId;
-              }
 
               return {
                 ...entry,
@@ -901,6 +846,8 @@ class CustomerController {
     const { id } = req.user; // Extract the user's ID from the request.
     const filename = req.file.filename;
     const hashString = req.body.hashString;
+    const amount = req.body.amount;
+
     console.log(filename);
     try {
       const user = await UserModel.findById(id); // Find the user by their ID.
@@ -910,17 +857,14 @@ class CustomerController {
       }
       if (!user.verified) {
         deleteUploadedFile(req.file);
-
         return res.status(401).json({ message: "User is not verified" }); // Return an error if the user is not verified.
       }
       if (user.subscribed) {
         deleteUploadedFile(req.file);
-
         return res
           .status(409)
-          .json({ message: "You are already a subscriber." }); // Return an error if the user is already subscribed.
+          .json({ message: "You already invested in a Plan." }); // Return an error if the user is already subscribed.
       }
-
       if (!filename || !hashString) {
         deleteUploadedFile(req.file);
         return res
@@ -951,6 +895,7 @@ class CustomerController {
               "Account blocked due to excessive transaction hash attempts.",
           });
         }
+
         user.transactionHashRepeatCount =
           Number(user.transactionHashRepeatCount) + 1;
         user.save();
@@ -974,6 +919,7 @@ class CustomerController {
       const pendingSubscription = new PendingSubcriptionModel({
         userId: user._id,
         screenshotPath: filename,
+        amount,
         hashString,
       });
       await pendingSubscription.save();
@@ -1169,7 +1115,7 @@ class CustomerController {
           recieverUser._id
         );
       }
-      recieverUser.referalEnabled = true;
+      // recieverUser.referalEnabled = true;
       recieverUser.investment =
         parseFloat(recieverUser.investment) + parseFloat(amount);
       recieverUser.subscriptionHistory.push({
