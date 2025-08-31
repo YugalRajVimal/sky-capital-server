@@ -80,6 +80,10 @@ const userSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    lastInvestmentRoiWallet: {
+      type: Number,
+      default: 0,
+    },
     pendingWallet: {
       type: Number,
       default: 0,
@@ -138,11 +142,23 @@ const userSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    roiToLevelIncome: {
+      type: Number,
+      default: 0,
+    },
+    pendingRoiToLevelIncome: {
+      type: Number,
+      default: 0,
+    },
     totalEarning: {
       type: Number,
       default: 0,
     },
-    totalWithdrawalAmount: {
+    mainWithdrawalAmount: {
+      type: Number,
+      default: 0,
+    },
+    roiWithdrawalAmount: {
       type: Number,
       default: 0,
     },
@@ -155,6 +171,10 @@ const userSchema = new mongoose.Schema(
       default: 0,
     },
     investment: {
+      type: Number,
+      default: 0,
+    },
+    firstInvestment: {
       type: Number,
       default: 0,
     },
@@ -217,7 +237,7 @@ const userSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.Mixed,
       default: () => {
         const levels = {};
-        for (let i = 0; i <= 9; i++) {
+        for (let i = 0; i <= 3; i++) {
           levels[i] = [];
         }
         return levels;
@@ -227,7 +247,7 @@ const userSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.Mixed,
       default: () => {
         const levels = {};
-        for (let i = 0; i <= 9; i++) {
+        for (let i = 0; i <= 3; i++) {
           levels[i] = [];
         }
         return levels;

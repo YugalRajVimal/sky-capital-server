@@ -3,6 +3,7 @@ import CustomerController from "../Controllers/CustomerControllers/CustomerContr
 import jwtAuth from "../middlewares/auth.middleware.js";
 import { upload } from "../middlewares/fileUpload.middleware.js";
 import { walletQRUpload } from "../middlewares/walletQRUpload.middleware.js";
+import everyDayCheckROIToLevelPaidMiddleware from "../middlewares/everydayCheckROIToLevelPaid.js";
 
 const customerRouter = express.Router();
 
@@ -46,9 +47,14 @@ customerRouter.post(
   }
 );
 
-customerRouter.get("/get-customer-profile-data", jwtAuth, (req, res) => {
-  customerController.getCustomerProfileData(req, res);
-});
+customerRouter.get(
+  "/get-customer-profile-data",
+  jwtAuth,
+  everyDayCheckROIToLevelPaidMiddleware,
+  (req, res) => {
+    customerController.getCustomerProfileData(req, res);
+  }
+);
 
 customerRouter.get("/get-profile-details", jwtAuth, (req, res) => {
   customerController.getProfileDetails(req, res);

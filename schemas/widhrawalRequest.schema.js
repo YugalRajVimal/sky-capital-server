@@ -12,6 +12,10 @@ const WidhrawalRequestSchema = new mongoose.Schema({
   requestAmount: {
     type: String,
   },
+  walletType: {
+    type: String,
+    enum: ["roi", "main"],
+  },
   date: {
     type: Date,
     default: Date.now,

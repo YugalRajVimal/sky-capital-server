@@ -521,59 +521,59 @@ class CustomerController {
   }
 
   // ---- ROI Calculation ----
-  updateROIIncome = async (id) => {
-    const session = await mongoose.startSession();
-    session.startTransaction();
+  // updateROIIncome = async (id) => {
+  //   const session = await mongoose.startSession();
+  //   session.startTransaction();
 
-    try {
-      const user = await UserModel.findById(id).session(session);
-      if (!user || !user.lastInvestment || !user.lastInvestmentDoneOnDate) {
-        await session.abortTransaction();
-        session.endSession();
-        return null;
-      }
+  //   try {
+  //     const user = await UserModel.findById(id).session(session);
+  //     if (!user || !user.lastInvestment || !user.lastInvestmentDoneOnDate) {
+  //       await session.abortTransaction();
+  //       session.endSession();
+  //       return null;
+  //     }
 
-      const workingDays = this.calculateWorkingDays(
-        user.lastInvestmentDoneOnDate,
-        new Date()
-      );
-      const lastInvestment = Number(user.lastInvestment);
+  //     const workingDays = this.calculateWorkingDays(
+  //       user.lastInvestmentDoneOnDate,
+  //       new Date()
+  //     );
+  //     const lastInvestment = Number(user.lastInvestment);
 
-      let dailyRoiPercentage = 0;
-      if (lastInvestment >= 100 && lastInvestment <= 999)
-        dailyRoiPercentage = 0.04;
-      else if (lastInvestment >= 1000 && lastInvestment <= 4999)
-        dailyRoiPercentage = 0.05;
-      else if (lastInvestment >= 5000) dailyRoiPercentage = 0.06;
+  //     let dailyRoiPercentage = 0;
+  //     if (lastInvestment >= 100 && lastInvestment <= 999)
+  //       dailyRoiPercentage = 0.04;
+  //     else if (lastInvestment >= 1000 && lastInvestment <= 4999)
+  //       dailyRoiPercentage = 0.05;
+  //     else if (lastInvestment >= 5000) dailyRoiPercentage = 0.06;
 
-      const potentialROIIncome =
-        workingDays * (lastInvestment * dailyRoiPercentage);
-      const maxAllowedROI = lastInvestment * 2;
-      const totalROIIncomeTillNow = Math.min(potentialROIIncome, maxAllowedROI);
+  //     const potentialROIIncome =
+  //       workingDays * (lastInvestment * dailyRoiPercentage);
+  //     const maxAllowedROI = lastInvestment * 2;
+  //     const totalROIIncomeTillNow = Math.min(potentialROIIncome, maxAllowedROI);
 
-      // Apply updates atomically inside the transaction
-      const updatedUser = await UserModel.findByIdAndUpdate(
-        id,
-        {
-          $set: {
-            roiWallet: totalROIIncomeTillNow,
+  //     // Apply updates atomically inside the transaction
+  //     const updatedUser = await UserModel.findByIdAndUpdate(
+  //       id,
+  //       {
+  //         $set: {
+  //           roiWallet: totalROIIncomeTillNow,
 
-            subscribed: potentialROIIncome >= maxAllowedROI ? false : true,
-          },
-        },
-        { new: true, session } // return updated doc
-      );
+  //           subscribed: potentialROIIncome >= maxAllowedROI ? false : true,
+  //         },
+  //       },
+  //       { new: true, session } // return updated doc
+  //     );
 
-      await session.commitTransaction();
-      session.endSession();
+  //     await session.commitTransaction();
+  //     session.endSession();
 
-      return updatedUser;
-    } catch (error) {
-      await session.abortTransaction();
-      session.endSession();
-      throw error;
-    }
-  };
+  //     return updatedUser;
+  //   } catch (error) {
+  //     await session.abortTransaction();
+  //     session.endSession();
+  //     throw error;
+  //   }
+  // };
 
   // ---- Controller ----
   getCustomerProfileData = async (req, res) => {
@@ -581,11 +581,11 @@ class CustomerController {
 
     try {
       // Update ROI first (transaction safe)
-      try {
-        await this.updateROIIncome(id);
-      } catch (roiError) {
-        console.warn("ROI update failed, continuing:", roiError.message);
-      }
+      // try {
+      //   await this.updateROIIncome(id);
+      // } catch (roiError) {
+      //   console.warn("ROI update failed, continuing:", roiError.message);
+      // }
       // const updatedUser = await this.updateROIIncome(id);
 
       const user = await UserModel.findById(id)
@@ -599,18 +599,35 @@ class CustomerController {
       delete userData.password;
 
       userData.subscribed = userData.subscribed ?? false;
-      userData.referredUserHistory = userData.referredUserHistory || [];
-      userData.referredUserByLevel = userData.referredUserByLevel || {};
+
+      // Calculate direct team members counts
+      userData.totalDirectTeamMembersCount =
+        userData.referredUserHistory.length;
+
+      userData.activeDirectTeamMembersCount =
+        userData.referredUserHistory.filter(
+          (ref) => ref.userId?.subscribed
+        ).length;
+
+      userData.totalLevelTeamMembersCount = 0;
+      for (let level = 0; level <= 2; level++) {
+        if (
+          userData.referredUserByLevel &&
+          userData.referredUserByLevel[level]
+        ) {
+          userData.totalLevelTeamMembersCount +=
+            userData.referredUserByLevel[level].length;
+        }
+      }
+
+      userData.totalWorldTeamCount = await UserModel.countDocuments({
+        ancestry: user.referalId,
+      });
 
       const withdrawalList = await WidhrawalRequestModel.find({
         userId: userData._id,
         status: "approved",
       });
-
-      userData.totalWithdrawalAmount = withdrawalList.reduce(
-        (acc, withdrawal) => acc + parseFloat(withdrawal.requestAmount),
-        0
-      );
 
       return res.status(200).json(userData);
     } catch (error) {
@@ -652,10 +669,9 @@ class CustomerController {
 
   updateBankDetails = async (req, res) => {
     const { idType, bankId } = req.body;
-    const walletQR = req.file;
-    console.log(idType, bankId, walletQR);
+    // const walletQR = req.file;
 
-    if (!idType || !bankId || !walletQR) {
+    if (!idType || !bankId) {
       return res
         .status(400)
         .json({ message: "All three fields are mandatory" });
@@ -669,10 +685,7 @@ class CustomerController {
       }
       user.idType = idType;
       user.bankId = bankId;
-      if (user.walletQR) {
-        deleteUploadedFile({ path: user.walletQR });
-        user.walletQR = walletQR.path;
-      }
+
       await user.save();
       return res
         .status(200)
@@ -714,7 +727,7 @@ class CustomerController {
       const user = await UserModel.findById(id).populate({
         path: "referredUserHistory.userId",
         select:
-          "_id name email phoneNo sponsorId referalId createdOn subscribedOn subscribed",
+          "_id name email phoneNo sponsorId referalId createdOn firstInvestment subscribedOn subscribed",
       });
 
       if (!user) {
@@ -747,7 +760,7 @@ class CustomerController {
           const populatedEntries = await Promise.all(
             entries.map(async (entry) => {
               const userDoc = await UserModel.findById(entry.userId).select(
-                "name email phoneNo sponsorId sponsorName referalId subscribed subscribedOn"
+                "name email phoneNo sponsorId sponsorName referalId createdOn firstInvestment subscribed subscribedOn"
               );
 
               const userObj = userDoc?.toObject();
@@ -865,6 +878,12 @@ class CustomerController {
           .status(409)
           .json({ message: "You already invested in a Plan." }); // Return an error if the user is already subscribed.
       }
+      if (Number(amount) < user.lastInvestment) {
+        deleteUploadedFile(req.file);
+        return res.status(400).json({
+          message: `Investment amount ($${amount}) cannot be less than your previous investment ($${user.lastInvestment}).`,
+        });
+      }
       if (!filename || !hashString) {
         deleteUploadedFile(req.file);
         return res
@@ -935,12 +954,13 @@ class CustomerController {
   };
 
   withdrawalRequest = async (req, res) => {
-    const { requestAmount, walletAddress } = req.body;
+    const { requestAmount, walletAddress, selectedWallet } = req.body;
     const userId = req.user.id;
     try {
       const existingWithdrawalRequest = await WidhrawalRequestModel.findOne({
         userId,
         status: "pending",
+        walletType: selectedWallet,
       });
       if (existingWithdrawalRequest) {
         return res.status(409).json({
@@ -953,20 +973,37 @@ class CustomerController {
         return res.status(404).json({ message: "User not found" });
       }
 
-      if (requestAmount < 6) {
+      if (requestAmount < 10) {
         return res
           .status(400)
-          .json({ message: "Minimum widhraw amount is $6" });
+          .json({ message: "Minimum widhraw amount is $10" });
       }
 
-      if (requestAmount > user.mainWalletBalance) {
-        return res.status(400).json({ message: "Insufficient balance" });
+      if (selectedWallet == "roi") {
+        const currentDate = new Date();
+        const dayOfMonth = currentDate.getDate();
+
+        if (dayOfMonth !== 15 && dayOfMonth !== 30) {
+          return res.status(400).json({
+            message:
+              "Withdrawals can only be requested on the 15th or 30th of each month.",
+          });
+        }
+        if (requestAmount > user.roiWallet) {
+          return res.status(400).json({ message: "Insufficient balance" });
+        }
+      }
+      if (selectedWallet == "main") {
+        if (requestAmount > user.mainWallet) {
+          return res.status(400).json({ message: "Insufficient balance" });
+        }
       }
 
       const newWithdrawalRequest = new WidhrawalRequestModel({
         userId,
         requestAmount,
         walletAddress,
+        walletType: selectedWallet,
         status: "pending",
       });
       await newWithdrawalRequest.save();
@@ -991,174 +1028,157 @@ class CustomerController {
   };
 
   transferMoney = async (req, res) => {
-    const { userId, remark } = req.body;
+    const { userId, amount, remark } = req.body;
     const senderId = req.user.id;
+
+    const session = await mongoose.startSession();
+
     try {
-      // Since there's no function to handle the actual transfer logic, we'll simulate it here
-      console.log(`Simulating transfer of from ${senderId} to ${userId}`);
-      const senderUser = await UserModel.findById(senderId);
-      const recieverUser = await UserModel.findById(userId);
+      session.startTransaction();
 
-      const pendingSubscription = await PendingSubcriptionModel.findOne({
-        userId: recieverUser._id,
-        screenshotPath: recieverUser.paymentScreenshotPath,
-      });
+      const senderUser = await UserModel.findById(senderId).session(session);
+      const receiverUser = await UserModel.findById(userId).session(session);
+      const admin = await AdminModel.findOne({}).session(session);
 
-      if (pendingSubscription) {
-        console.log(
-          "Pending subscription request found for the receiver user."
-        );
-        return res.status(400).json({
-          message:
-            "A pending subscription request already exists by this user.",
-        });
-      }
-      if (recieverUser.subscribed) {
-        return res
-          .status(400)
-          .json({ message: "Receiver user is already subscribed." });
-      }
-
-      const admin = await AdminModel.findOne({});
-      const amount = admin.subscriptionAmount;
-
-      if (!senderUser || !recieverUser) {
-        console.log("One or both users not found.");
+      if (!senderUser || !receiverUser) {
         return res.status(404).json({ message: "User not found" });
       }
 
-      if (senderUser.walletBalance < amount) {
-        console.log("Sender user has insufficient balance.");
+      // Check balance
+      if (senderUser.mainWallet < amount) {
         return res.status(400).json({ message: "Insufficient balance" });
       }
 
-      const subscriptionWidhrawBalance = senderUser.subscriptionWidhrawBalance;
+      // Prevent duplicate subscription if pending exists
+      const pendingSubscription = await PendingSubcriptionModel.findOne({
+        userId: receiverUser._id,
+        screenshotPath: receiverUser.paymentScreenshotPath,
+      }).session(session);
 
-      if (subscriptionWidhrawBalance === 12) {
-        return res.status(400).json({
-          message:
-            "You cannot withdraw until your subscription is renewed using WalletBalance",
-        });
+      if (pendingSubscription) {
+        return res
+          .status(400)
+          .json({ message: "A pending subscription already exists." });
       }
 
-      if (amount > 12 || amount < 6) {
-        return res.status(400).json({
-          message: `You cannot withdraw more than $12 and less than $6`,
-        });
+      if (receiverUser.subscribed) {
+        return res
+          .status(400)
+          .json({ message: "Receiver is already subscribed." });
       }
 
-      if (
-        subscriptionWidhrawBalance < 12 &&
-        amount > 12 - subscriptionWidhrawBalance
-      ) {
-        return res.status(400).json({
-          message:
-            `You already widhrawn $${subscriptionWidhrawBalance} out of $18. Next $6 is reserved for Renew Subscription. You can only withdraw a maximum of ` +
-            (12 - subscriptionWidhrawBalance) +
-            " amount",
-        });
-      }
-
-      const today = new Date();
-      const todayOnly = new Date(today.toISOString().slice(0, 10));
-      // Check if entry already exists for today
-      const existingEntry = admin.companyTurnoverByDate.find(
-        (entry) =>
-          new Date(entry.date).toISOString().slice(0, 10) ===
-          todayOnly.toISOString().slice(0, 10)
-      );
-
-      if (existingEntry) {
-        // Update the existing amount
-        existingEntry.amount += parseFloat(amount);
-      } else {
-        // Create a new entry
-        admin.companyTurnoverByDate.push({
-          date: todayOnly,
-          amount: parseFloat(amount),
-        });
-      }
-
+      // Update balances
+      senderUser.mainWallet -= parseFloat(amount);
       admin.companyTurnover =
         parseFloat(admin.companyTurnover) + parseFloat(amount);
 
-      await admin.save();
+      // Subscribe Receiver
+      const now = new Date();
+      receiverUser.subscribed = true;
+      receiverUser.subscribedOn = now;
+      receiverUser.lastInvestment = parseFloat(amount);
+      receiverUser.lastInvestmentDoneOnDate = now;
+      receiverUser.lastInvestmentRoiWallet = 0;
+      receiverUser.investment =
+        parseFloat(receiverUser.investment) + parseFloat(amount);
 
-      const adminController = new AdminController();
+      // First investment logic
+      if (!receiverUser.firstInvestment || receiverUser.firstInvestment === 0) {
+        receiverUser.firstInvestment = parseFloat(amount);
 
-      senderUser.walletBalance -= parseFloat(amount);
-      senderUser.subscriptionWidhrawBalance =
-        parseFloat(senderUser.subscriptionWidhrawBalance) + parseFloat(amount);
-      senderUser.save();
+        const referrer = await UserModel.findOne({
+          referalId: receiverUser.sponsorId,
+        }).session(session);
 
-      //Subscribe Reciever User
-      recieverUser.subscribed = true;
-      if (!recieverUser.referalId) {
-        recieverUser.referalId =
-          await adminController.generateUniqueReferalCode();
+        if (referrer) {
+          const directTeamCount =
+            (referrer.referredUserHistory?.length || 0) + 1;
 
-        const tempDate = new Date();
-        recieverUser.subscribedOn = tempDate;
-        recieverUser.nextRoyaltyDateFlagFrom = tempDate;
+          const adminController = new AdminController();
+          await adminController.checkAndPayReferBonusAmount(
+            referrer,
+            directTeamCount,
+            session
+          );
+          await adminController.checkAndPayReferAmount(
+            amount,
+            receiverUser,
+            session
+          );
 
-        const totalWorldUsers = await UserModel.countDocuments({
-          subscribed: true,
-        });
-        recieverUser.worldUsersWhenSubscribed = totalWorldUsers;
-        await recieverUser.save();
-        await adminController.payDirectIncome(
-          recieverUser.sponsorId,
-          recieverUser._id
-        );
-        await adminController.payLevelIncome(
-          recieverUser.sponsorId,
-          recieverUser._id
-        );
-      }
-      // recieverUser.referalEnabled = true;
-      recieverUser.investment =
-        parseFloat(recieverUser.investment) + parseFloat(amount);
-      recieverUser.subscriptionHistory.push({
-        date: new Date(),
-        amount: amount,
-      });
-      recieverUser.save();
-
-      const referrer = await UserModel.findOne({
-        referalId: recieverUser.sponsorId,
-      });
-
-      if (
-        referrer &&
-        !referrer.referredUserHistory.some(
-          (history) => history.userId.toString() === recieverUser._id.toString()
-        )
-      ) {
-        referrer.referredUserHistory.push({
-          date: new Date(),
-          userId: recieverUser._id,
-        });
-        await referrer.save();
-        await adminController.checkAndPayRoyalty(recieverUser.sponsorId);
+          // Push into referredUserHistory if not exists
+          await UserModel.updateOne(
+            {
+              _id: referrer._id,
+              "referredUserHistory.userId": { $ne: receiverUser._id },
+            },
+            {
+              $addToSet: {
+                referredUserHistory: { date: now, userId: receiverUser._id },
+              },
+            },
+            { session }
+          );
+        }
       }
 
-      const transferHistory = new TransferHostoryModel({
-        userId: senderId,
-        senderUserId: senderId,
-        recieverUserId: userId,
-        amount: amount.toString(),
-        remark: remark || "Deposite for another user",
+      // Track receiver’s subscription history
+      receiverUser.subscriptionHistory.push({
+        date: now,
+        amount: parseFloat(amount),
       });
-      await transferHistory.save();
 
-      await senderUser.save();
-      await recieverUser.save();
-      console.log("Transfer successful.");
+      // Move pending incomes → main wallet
+      await UserModel.updateOne(
+        { _id: receiverUser._id },
+        {
+          $inc: {
+            mainWallet: receiverUser.pendingWallet,
+            referBonusIncome: receiverUser.pendingReferBonusIncome,
+            referIncome: receiverUser.pendingReferIncome,
+            rewardTeamBusinessIncome:
+              receiverUser.pendingRewardTeamBusinessIncome,
+            roiToLevelIncome: receiverUser.pendingRoiToLevelIncome,
+          },
+          $set: {
+            pendingWallet: 0,
+            pendingReferBonusIncome: 0,
+            pendingReferIncome: 0,
+            pendingRewardTeamBusinessIncome: 0,
+            pendingRoiToLevelIncome: 0,
+          },
+        },
+        { session }
+      );
+
+      // Save Transfer History
+      await TransferHostoryModel.create(
+        [
+          {
+            userId: senderId,
+            senderUserId: senderId,
+            recieverUserId: userId,
+            amount: amount.toString(),
+            remark: remark || "Deposit for another user",
+          },
+        ],
+        { session }
+      );
+
+      await senderUser.save({ session });
+      await receiverUser.save({ session });
+      await admin.save({ session });
+
+      await session.commitTransaction();
+      session.endSession();
+
       return res
         .status(200)
-        .json({ message: "Deposit for other User is successful" });
+        .json({ message: "Deposit for another user successful" });
     } catch (error) {
-      console.error(error);
+      await session.abortTransaction();
+      session.endSession();
+      console.error("Error in transferMoney:", error);
       return res.status(500).json({ message: "Internal Server Error" });
     }
   };
@@ -1305,7 +1325,7 @@ class CustomerController {
         if (!user) {
           return res.status(404).json({ message: "User not found" });
         }
-        return res.status(200).json({ name: user.name });
+        return res.status(200).json({ name: user.name, email: user.email });
       } catch (error) {
         console.error(error);
         return res.status(500).json({ message: "Internal Server Error" });

@@ -78,6 +78,11 @@ const adminSchema = new mongoose.Schema({
   isSiteOnMaintenance: {
     type: Boolean,
   },
+  everyDayCheckROIToLevelPaid: {
+    type: Map,
+    of: Boolean,
+    default: {},
+  }
 });
 
 const AdminModel = mongoose.model("Admin", adminSchema);

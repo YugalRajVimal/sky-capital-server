@@ -722,14 +722,30 @@ class AdminController {
 
       const user = await UserModel.findById(request.userId);
 
-      if (user.mainWalletBalance < request.requestAmount) {
-        return res.status(400).json({ message: "Insufficient wallet balance" });
+      if (request.walletType == "roi") {
+        if (user.roiWallet < request.requestAmount) {
+          return res
+            .status(400)
+            .json({ message: "Insufficient wallet balance" });
+        }
+        user.roiWallet -= request.requestAmount;
+        user.roiWithdrawalAmount =
+          parseFloat(user.roiWithdrawalAmount) +
+          parseFloat(request.requestAmount);
       }
 
-      user.mainWalletBalance -= request.requestAmount;
-      user.totalWithdrawalAmount =
-        parseFloat(user.totalWithdrawalAmount) +
-        parseFloat(request.requestAmount);
+      if (request.walletType == "main") {
+        if (user.mainWallet < request.requestAmount) {
+          return res
+            .status(400)
+            .json({ message: "Insufficient wallet balance" });
+        }
+        user.mainWallet -= request.requestAmount;
+        user.mainWithdrawalAmount =
+          parseFloat(user.mainWithdrawalAmount) +
+          parseFloat(request.requestAmount);
+      }
+
       await user.save();
 
       request.status = "approved";
@@ -2184,6 +2200,7 @@ class AdminController {
           $set: {
             subscribed: true,
             subscribedOn: now,
+            lastInvestmentRoiWallet: 0,
             lastInvestment: parseFloat(pendingSubs.amount),
             lastInvestmentDoneOnDate: now,
           },
@@ -2194,6 +2211,34 @@ class AdminController {
         { session }
       );
 
+      if (user.firstInvestment == 0 || !user.firstInvestment) {
+        await UserModel.updateOne(
+          { _id: user._id },
+          {
+            $set: {
+              firstInvestment: parseFloat(pendingSubs.amount),
+            },
+          },
+          { session }
+        );
+
+        const referrer = await UserModel.findOne(
+          { referalId: user.sponsorId },
+          null,
+          { session }
+        );
+        if (referrer) {
+          const directTeamCount =
+            (referrer.referredUserHistory?.length || 0) + 1;
+          await this.checkAndPayReferBonusAmount(
+            referrer,
+            directTeamCount,
+            session
+          );
+          await this.checkAndPayReferAmount(pendingSubs.amount, user, session);
+        }
+      }
+
       // 3. Referrer History + Referral Income
       if (user.sponsorId) {
         const referrer = await UserModel.findOne(
@@ -2202,26 +2247,24 @@ class AdminController {
           { session }
         );
         if (referrer) {
-          await UserModel.updateOne(
-            { _id: referrer._id },
+          const alreadyExists = await UserModel.findOne(
             {
-              $addToSet: {
-                referredUserHistory: { date: now, userId: user._id },
-              },
+              _id: referrer._id,
+              referredUserHistory: { $elemMatch: { userId: user._id } },
             },
+            null,
             { session }
           );
 
-          const directTeamCount =
-            (referrer.referredUserHistory?.length || 0) + 1;
-
-          await this.checkAndPayReferBonusAmount(
-            referrer,
-            directTeamCount,
-            session
-          );
-
-          await this.checkAndPayReferAmount(pendingSubs.amount, user, session);
+          if (!alreadyExists) {
+            await UserModel.updateOne(
+              { _id: referrer._id },
+              {
+                $push: { referredUserHistory: { date: now, userId: user._id } },
+              },
+              { session }
+            );
+          }
         }
       }
 
@@ -2233,12 +2276,14 @@ class AdminController {
             referBonusIncome: user.pendingReferBonusIncome,
             referIncome: user.pendingReferIncome,
             rewardTeamBusinessIncome: user.pendingRewardTeamBusinessIncome,
+            roiToLevelIncome: user.pendingRoiToLevelIncome,
           },
           $set: {
             pendingWallet: 0,
             pendingReferBonusIncome: 0,
             pendingReferIncome: 0,
             pendingRewardTeamBusinessIncome: 0,
+            pendingRoiToLevelIncome: 0,
           },
         },
         { session }
@@ -2420,6 +2465,7 @@ class AdminController {
       return res.status(500).json({ message: "Internal Server Error" });
     }
   };
+
   addNotification = async (req, res) => {
     try {
       const { message } = req.body;
