@@ -704,7 +704,7 @@ class CustomerController {
 
       if (!user) return res.status(404).json({ message: "User not found" });
 
-      await this, checkAndPayRewardTeamBusinessAmount(user._id);
+      await this.checkAndPayRewardTeamBusinessAmount(user._id);
 
       // Convert to plain object safely
       const userData = user;
