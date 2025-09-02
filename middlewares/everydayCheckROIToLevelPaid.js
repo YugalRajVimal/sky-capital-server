@@ -9,9 +9,9 @@ function formatDateLocal(date) {
 }
 
 const ROI_CONFIG = [
-  { min: 100, max: 999, rate: 0.04 },
-  { min: 1000, max: 4999, rate: 0.05 },
-  { min: 5000, max: Infinity, rate: 0.06 },
+  { min: 100, max: 999, rate: 0.004 },
+  { min: 1000, max: 4999, rate: 0.005 },
+  { min: 5000, max: Infinity, rate: 0.006 },
 ];
 
 const ROI_TO_LEVEL_CONFIG = [
@@ -104,6 +104,8 @@ const payROIToLevelIncome = async (user, reward, userMap) => {
     } else {
       update.$inc.mainWallet = levelReward;
       update.$inc.roiToLevelIncome = levelReward;
+      update.$inc.totalRoiToLevelIncome = levelReward;
+
     }
 
     sponsorOps.push({
@@ -118,27 +120,34 @@ const payROIToLevelIncome = async (user, reward, userMap) => {
     level++;
   }
 
-
   return sponsorOps;
 };
 
 const everyDayCheckROIToLevelPaidMiddleware = async (req, res, next) => {
   try {
-    console.log("everyDayCheckROIToLevelPaidMiddleware: Starting daily ROI check.");
+    console.log(
+      "everyDayCheckROIToLevelPaidMiddleware: Starting daily ROI check."
+    );
     const currDate = new Date();
     currDate.setHours(0, 0, 0, 0);
     const todayDateString = formatDateLocal(currDate);
-    console.log(`everyDayCheckROIToLevelPaidMiddleware: Current date (local): ${todayDateString}`);
+    console.log(
+      `everyDayCheckROIToLevelPaidMiddleware: Current date (local): ${todayDateString}`
+    );
 
     const admin = await AdminModel.findOne({});
     if (!admin) {
-      console.error("everyDayCheckROIToLevelPaidMiddleware: Admin document not found. Cannot proceed with ROI check.");
+      console.error(
+        "everyDayCheckROIToLevelPaidMiddleware: Admin document not found. Cannot proceed with ROI check."
+      );
       return res.status(500).json({ message: "Admin configuration missing." });
     }
     console.log("everyDayCheckROIToLevelPaidMiddleware: Admin document found.");
 
     if (admin.everyDayCheckROIToLevelPaid.get(todayDateString)) {
-      console.log(`everyDayCheckROIToLevelPaidMiddleware: Already processed for ${todayDateString}, skipping.`);
+      console.log(
+        `everyDayCheckROIToLevelPaidMiddleware: Already processed for ${todayDateString}, skipping.`
+      );
       return next();
     }
 
@@ -151,14 +160,26 @@ const everyDayCheckROIToLevelPaidMiddleware = async (req, res, next) => {
       ? new Date(lastCheckDateString)
       : null;
 
-    console.log(`everyDayCheckROIToLevelPaidMiddleware: Last processed date string: ${lastCheckDateString || 'N/A'}`);
-    console.log(`everyDayCheckROIToLevelPaidMiddleware: Last processed date object: ${lastCheckDate || 'N/A'}`);
+    console.log(
+      `everyDayCheckROIToLevelPaidMiddleware: Last processed date string: ${
+        lastCheckDateString || "N/A"
+      }`
+    );
+    console.log(
+      `everyDayCheckROIToLevelPaidMiddleware: Last processed date object: ${
+        lastCheckDate || "N/A"
+      }`
+    );
 
     const startDate = lastCheckDate
       ? new Date(lastCheckDate.getTime() + 86400000) // next day
       : currDate;
 
-    console.log(`everyDayCheckROIToLevelPaidMiddleware: Starting date for processing loop: ${formatDateLocal(startDate)}`);
+    console.log(
+      `everyDayCheckROIToLevelPaidMiddleware: Starting date for processing loop: ${formatDateLocal(
+        startDate
+      )}`
+    );
 
     for (
       let d = new Date(startDate);
@@ -167,22 +188,32 @@ const everyDayCheckROIToLevelPaidMiddleware = async (req, res, next) => {
     ) {
       const loopDateString = formatDateLocal(d);
       const isWeekend = [0, 6].includes(d.getDay());
-      console.log(`everyDayCheckROIToLevelPaidMiddleware: Processing date: ${loopDateString}`);
+      console.log(
+        `everyDayCheckROIToLevelPaidMiddleware: Processing date: ${loopDateString}`
+      );
 
       if (admin.everyDayCheckROIToLevelPaid.get(loopDateString)) {
-        console.log(`everyDayCheckROIToLevelPaidMiddleware: Already processed for ${loopDateString}, continuing to next day.`);
+        console.log(
+          `everyDayCheckROIToLevelPaidMiddleware: Already processed for ${loopDateString}, continuing to next day.`
+        );
         continue;
       }
 
       if (isWeekend) {
-        console.log(`everyDayCheckROIToLevelPaidMiddleware: Skipping ${loopDateString} (weekend).`);
+        console.log(
+          `everyDayCheckROIToLevelPaidMiddleware: Skipping ${loopDateString} (weekend).`
+        );
       } else {
-        console.log(`everyDayCheckROIToLevelPaidMiddleware: Executing ROI logic for ${loopDateString}.`);
+        console.log(
+          `everyDayCheckROIToLevelPaidMiddleware: Executing ROI logic for ${loopDateString}.`
+        );
         const users = await UserModel.find({
           subscribed: true,
           lastInvestmentDoneOnDate: { $exists: true, $ne: null },
         });
-        console.log(`everyDayCheckROIToLevelPaidMiddleware: Found ${users.length} subscribed users for ${loopDateString}.`);
+        console.log(
+          `everyDayCheckROIToLevelPaidMiddleware: Found ${users.length} subscribed users for ${loopDateString}.`
+        );
 
         const userMap = new Map(users.map((u) => [u.referalId, u]));
 
@@ -195,7 +226,9 @@ const everyDayCheckROIToLevelPaidMiddleware = async (req, res, next) => {
             user.lastInvestmentDoneOnDate &&
             d > user.lastInvestmentDoneOnDate
           ) {
-            console.log(`everyDayCheckROIToLevelPaidMiddleware: Processing ROI for user ID: ${user._id}, Investment: ${user.lastInvestment}`);
+            console.log(
+              `everyDayCheckROIToLevelPaidMiddleware: Processing ROI for user ID: ${user._id}, Investment: ${user.lastInvestment}`
+            );
             const rate = getDailyRoiRate(user.lastInvestment);
             const reward = user.lastInvestment * rate;
 
@@ -205,7 +238,9 @@ const everyDayCheckROIToLevelPaidMiddleware = async (req, res, next) => {
             const maxReward =
               2 * user.lastInvestment - user.lastInvestmentRoiWallet;
             const actualReward = Math.min(reward, maxReward);
-            console.log(`everyDayCheckROIToLevelPaidMiddleware: User ${user._id} - Daily ROI rate: ${rate}, Calculated reward: ${reward}, Actual reward: ${actualReward}, Unsubscribed: ${unsubscribed}`);
+            console.log(
+              `everyDayCheckROIToLevelPaidMiddleware: User ${user._id} - Daily ROI rate: ${rate}, Calculated reward: ${reward}, Actual reward: ${actualReward}, Unsubscribed: ${unsubscribed}`
+            );
 
             bulkOps.push({
               updateOne: {
@@ -213,6 +248,7 @@ const everyDayCheckROIToLevelPaidMiddleware = async (req, res, next) => {
                 update: {
                   $inc: {
                     roiWallet: actualReward,
+                    totalROIIncome: actualReward,
                     lastInvestmentRoiWallet: actualReward,
                   },
                   ...(unsubscribed ? { $set: { subscribed: false } } : {}),
@@ -222,26 +258,40 @@ const everyDayCheckROIToLevelPaidMiddleware = async (req, res, next) => {
 
             const ops = await payROIToLevelIncome(user, reward, userMap);
             sponsorOps.push(...ops);
-            console.log(`everyDayCheckROIToLevelPaidMiddleware: Collected ${ops.length} sponsor operations for user ${user._id}.`);
+            console.log(
+              `everyDayCheckROIToLevelPaidMiddleware: Collected ${ops.length} sponsor operations for user ${user._id}.`
+            );
           }
         }
 
         // Execute both bulk operations
         if (bulkOps.length > 0) {
-          console.log(`everyDayCheckROIToLevelPaidMiddleware: Executing ${bulkOps.length} user ROI bulk operations for ${loopDateString}.`);
+          console.log(
+            `everyDayCheckROIToLevelPaidMiddleware: Executing ${bulkOps.length} user ROI bulk operations for ${loopDateString}.`
+          );
           await UserModel.bulkWrite(bulkOps);
-          console.log(`everyDayCheckROIToLevelPaidMiddleware: User ROI bulk operations completed for ${loopDateString}.`);
+          console.log(
+            `everyDayCheckROIToLevelPaidMiddleware: User ROI bulk operations completed for ${loopDateString}.`
+          );
         } else {
-          console.log(`everyDayCheckROIToLevelPaidMiddleware: No user ROI bulk operations to execute for ${loopDateString}.`);
+          console.log(
+            `everyDayCheckROIToLevelPaidMiddleware: No user ROI bulk operations to execute for ${loopDateString}.`
+          );
         }
 
         if (sponsorOps.length > 0) {
           const finalSponsorOps = mergeSponsorOps(sponsorOps);
-          console.log(`everyDayCheckROIToLevelPaidMiddleware: Executing ${finalSponsorOps.length} sponsor ROI bulk operations for ${loopDateString}.`);
+          console.log(
+            `everyDayCheckROIToLevelPaidMiddleware: Executing ${finalSponsorOps.length} sponsor ROI bulk operations for ${loopDateString}.`
+          );
           await UserModel.bulkWrite(finalSponsorOps);
-          console.log(`everyDayCheckROIToLevelPaidMiddleware: Sponsor ROI bulk operations completed for ${loopDateString}.`);
+          console.log(
+            `everyDayCheckROIToLevelPaidMiddleware: Sponsor ROI bulk operations completed for ${loopDateString}.`
+          );
         } else {
-          console.log(`everyDayCheckROIToLevelPaidMiddleware: No sponsor ROI bulk operations to execute for ${loopDateString}.`);
+          console.log(
+            `everyDayCheckROIToLevelPaidMiddleware: No sponsor ROI bulk operations to execute for ${loopDateString}.`
+          );
         }
       }
 
@@ -251,13 +301,20 @@ const everyDayCheckROIToLevelPaidMiddleware = async (req, res, next) => {
         { $set: { [`everyDayCheckROIToLevelPaid.${loopDateString}`]: true } }
       );
       admin.everyDayCheckROIToLevelPaid.set(loopDateString, true);
-      console.log(`everyDayCheckROIToLevelPaidMiddleware: Marked ${loopDateString} as processed.`);
+      console.log(
+        `everyDayCheckROIToLevelPaidMiddleware: Marked ${loopDateString} as processed.`
+      );
     }
 
-    console.log("everyDayCheckROIToLevelPaidMiddleware: All daily ROI checks completed successfully.");
+    console.log(
+      "everyDayCheckROIToLevelPaidMiddleware: All daily ROI checks completed successfully."
+    );
     next();
   } catch (err) {
-    console.error("everyDayCheckROIToLevelPaidMiddleware: Error in ROI middleware:", err);
+    console.error(
+      "everyDayCheckROIToLevelPaidMiddleware: Error in ROI middleware:",
+      err
+    );
     next(); // still continue so user profile loads
   }
 };

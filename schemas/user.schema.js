@@ -146,6 +146,10 @@ const userSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    totalRoiToLevelIncome:{
+      type: Number,
+      default: 0,
+    },
     pendingRoiToLevelIncome: {
       type: Number,
       default: 0,
