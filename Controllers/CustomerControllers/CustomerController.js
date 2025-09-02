@@ -575,6 +575,116 @@ class CustomerController {
   //   }
   // };
 
+  checkAndPayRewardTeamBusinessAmount = async (userId) => {
+    const user = await UserModel.findById(userId);
+    if (!user) {
+      console.error(`User with ID ${userId} not found.`);
+      return; // Or throw an error, depending on desired behavior
+    }
+    const overAllIncomeTillNow =
+      parseFloat(user.mainWallet) + parseFloat(user.roiWallet);
+
+    const directTeamUserIds = user.referredUserHistory.map(
+      (entry) => entry.userId
+    );
+
+    const directTeamMembers = await UserModel.find({
+      _id: { $in: directTeamUserIds },
+    });
+
+    const directTeamIncomeData = directTeamMembers.map((member) => {
+      const memberOverAllIncome =
+        parseFloat(member.mainWallet || 0) + parseFloat(member.roiWallet || 0);
+      return {
+        userId: member._id,
+        name: member.name,
+        overAllIncome: memberOverAllIncome,
+      };
+    });
+
+    // You can now use directTeamIncomeData for further calculations or checks
+    // For example, to sum up the total income of the direct team:
+    const totalDirectTeamBusiness = directTeamIncomeData.reduce(
+      (sum, member) => sum + member.overAllIncome,
+      0
+    );
+
+    let qualifiedRewardLevel = null;
+    for (let i = rewardTeamBusinessAmount.length - 1; i >= 0; i--) {
+      const rewardLevel = rewardTeamBusinessAmount[i];
+      const { level, businessAmount, reward } = rewardLevel;
+
+      // Condition 1: referrer overall income >= businessAmount
+      const referrerMeetsIncome = overAllIncomeTillNow >= businessAmount;
+
+      // Condition 2: total direct team business >= businessAmount
+      const teamMeetsBusiness = totalDirectTeamBusiness >= businessAmount;
+
+      // Condition 3: at least one direct team member has overall income >= businessAmount / 2
+      const oneMemberMeetsHalfIncome = directTeamIncomeData.some(
+        (member) => member.overAllIncome >= businessAmount / 2
+      );
+
+      if (
+        referrerMeetsIncome &&
+        teamMeetsBusiness &&
+        oneMemberMeetsHalfIncome
+      ) {
+        qualifiedRewardLevel = rewardLevel;
+        break; // Found the highest applicable level, no need to check lower levels
+      }
+    }
+
+    if (qualifiedRewardLevel) {
+      console.log(
+        `User qualifies for Reward Team Business Amount Level ${qualifiedRewardLevel.level}:`
+      );
+      console.log(
+        `  Required Business Amount: ${qualifiedRewardLevel.businessAmount}`
+      );
+      console.log(`  Reward: ${qualifiedRewardLevel.reward}`);
+
+      // Check if the reward for this level has already been paid
+      if (
+        !user.rewardTeamBusinessIncomeLevelPaidFlag[qualifiedRewardLevel.level]
+      ) {
+        if (!user.subscribed) {
+          user.pendingRewardTeamBusinessIncome += qualifiedRewardLevel.reward;
+          user.pendingWallet += qualifiedRewardLevel.reward;
+          console.log(
+            `  Reward of ${qualifiedRewardLevel.reward} added to pending for user ${user._id}.`
+          );
+        } else {
+          user.rewardTeamBusinessIncome += qualifiedRewardLevel.reward;
+          user.mainWallet += qualifiedRewardLevel.reward;
+          user.totalMainWalletIncome += qualifiedRewardLevel.reward;
+          console.log(
+            `  Reward of ${qualifiedRewardLevel.reward} paid to main wallet for user ${user._id}.`
+          );
+        }
+        user.rewardTeamBusinessIncomeLevelPaidFlag[
+          qualifiedRewardLevel.level
+        ] = true;
+        user.markModified("rewardTeamBusinessIncomeLevelPaidFlag");
+        await user.save();
+        console.log(
+          `  Flag for Reward Team Business Amount Level ${qualifiedRewardLevel.level} set to true for user ${user._id}.`
+        );
+      } else {
+        console.log(
+          `  Reward for Level ${qualifiedRewardLevel.level} already paid to user ${user._id}.`
+        );
+      }
+    } else {
+      console.log(
+        "User does not qualify for any Reward Team Business Amount level based on current criteria."
+      );
+    }
+
+    console.log(`Total business from direct team: ${totalDirectTeamBusiness}`);
+    console.log(`User's overall income: ${overAllIncomeTillNow}`);
+  };
+
   // ---- Controller ----
   getCustomerProfileData = async (req, res) => {
     const { id } = req.user;
@@ -593,6 +703,8 @@ class CustomerController {
         .lean();
 
       if (!user) return res.status(404).json({ message: "User not found" });
+
+      await this, checkAndPayRewardTeamBusinessAmount(user._id);
 
       // Convert to plain object safely
       const userData = user;
