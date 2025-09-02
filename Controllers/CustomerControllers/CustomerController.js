@@ -15,6 +15,19 @@ import TransactionHashModel from "../../schemas/TransactionHash.js";
 
 import mongoose from "mongoose";
 
+const rewardTeamBusinessAmount = [
+  { level: 0, businessAmount: 5000, reward: 100 },
+  { level: 1, businessAmount: 10000, reward: 200 },
+  { level: 2, businessAmount: 20000, reward: 300 },
+  { level: 3, businessAmount: 40000, reward: 500 },
+  { level: 4, businessAmount: 70000, reward: 700 },
+  { level: 5, businessAmount: 100000, reward: 1000 },
+  { level: 6, businessAmount: 200000, reward: 2000 },
+  { level: 7, businessAmount: 500000, reward: 5000 },
+  { level: 8, businessAmount: 1000000, reward: 10000 },
+  { level: 9, businessAmount: 2500000, reward: 20000 },
+];
+
 class CustomerController {
   home = async (req, res) => {
     res.json({ message: "Hello Customer" });
