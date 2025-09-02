@@ -43,8 +43,10 @@ class CustomerController {
 
   signUp = async (req, res) => {
     const { email, password, sponsorId, name, phoneNo } = req.body;
+
     const lowerCaseEmail = email.toLowerCase();
-    if (!email || !password || !sponsorId || !name || !phoneNo) {
+
+    if (!email || !password || !name || !phoneNo) {
       return res.status(400).json({ message: "All fields are required" });
     }
     try {
@@ -86,28 +88,35 @@ class CustomerController {
           .json({ message: "Phone number already in use." });
       }
 
-      const existingSponsor = await UserModel.findOne({
-        referalId: sponsorId,
-      });
-
-      if (!existingSponsor) {
-        return res.status(404).json({ message: "Sponsor not found" });
-      }
-
-      const sponsor = await UserModel.findOne({ referalId: sponsorId });
-
       const newReferralId = await this.generateUniqueReferalCode();
 
-      const ancestry = sponsor
-        ? [...sponsor.ancestry, newReferralId]
-        : [newReferralId];
+      let ancestry;
+
+      if (sponsorId) {
+        const existingSponsor = await UserModel.findOne({
+          referalId: sponsorId,
+        });
+
+        if (!existingSponsor) {
+          return res.status(404).json({ message: "Sponsor not found" });
+        }
+
+        const sponsor = await UserModel.findOne({ referalId: sponsorId });
+
+        ancestry = sponsor
+          ? [...sponsor.ancestry, newReferralId]
+          : [newReferralId];
+      } else {
+        ancestry = [newReferralId];
+      }
+
 
       const hashedPassword = await bcrypt.hash(password, 10);
       const newUser = new UserModel({
         email: lowerCaseEmail,
         password: hashedPassword,
-        sponsorId,
-        sponsorName: existingSponsor.name,
+        sponsorId: sponsorId ? sponsorId : null,
+        sponsorName: sponsorId ? existingSponsor.name : null,
         name,
         phoneNo,
         role: "Customer",
@@ -115,40 +124,44 @@ class CustomerController {
         ancestry,
       });
 
-      let currentSponsorId = sponsorId;
-      let level = 0;
+      if (sponsorId) {
+        let currentSponsorId = sponsorId;
+        let level = 0;
 
-      while (level < 3 && currentSponsorId) {
-        if (
-          !existingSponsor.allReferredUserByLevel[level].some(
-            (entry) => entry.userId === newUser._id
-          )
-        ) {
-          const referredUserEntry = {
-            userId: newUser._id,
-            date: new Date(),
-          };
+        while (level < 3 && currentSponsorId) {
+          if (
+            !existingSponsor.allReferredUserByLevel[level].some(
+              (entry) => entry.userId === newUser._id
+            )
+          ) {
+            const referredUserEntry = {
+              userId: newUser._id,
+              date: new Date(),
+            };
 
-          if (!existingSponsor.allReferredUserByLevel[level]) {
-            existingSponsor.allReferredUserByLevel[level] = [];
+            if (!existingSponsor.allReferredUserByLevel[level]) {
+              existingSponsor.allReferredUserByLevel[level] = [];
+            }
+            existingSponsor.allReferredUserByLevel[level].push(
+              referredUserEntry
+            );
+            existingSponsor.markModified("allReferredUserByLevel");
+
+            console.log(`Added new referred user entry for level ${level}.`);
           }
-          existingSponsor.allReferredUserByLevel[level].push(referredUserEntry);
-          existingSponsor.markModified("allReferredUserByLevel");
 
-          console.log(`Added new referred user entry for level ${level}.`);
+          await existingSponsor.save();
+
+          // Stop if admin is reached
+          if (existingSponsor.referalId === null) {
+            console.log(`Reached top level, stopping the process.`);
+            break;
+          }
+
+          // Move to next level's sponsor
+          currentSponsorId = existingSponsor.sponsorId; // or referrer.referredById if using that name
+          level++;
         }
-
-        await existingSponsor.save();
-
-        // Stop if admin is reached
-        if (existingSponsor.referalId === "FTR000001") {
-          console.log(`Reached admin level, stopping the process.`);
-          break;
-        }
-
-        // Move to next level's sponsor
-        currentSponsorId = existingSponsor.sponsorId; // or referrer.referredById if using that name
-        level++;
       }
 
       if (!newUser.cronJobByLevelStartedOn) {

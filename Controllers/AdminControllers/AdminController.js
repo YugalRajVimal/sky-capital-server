@@ -653,7 +653,7 @@ class AdminController {
 
       const pendingRequests = requests.map((request) => ({
         ...request.toObject(), // Ensures plain object (not Mongoose doc)
-        screenshotPath: `http://${process.env.DOMAIN}/uploads/payments/${request.screenshotPath}`,
+        screenshotPath: `${process.env.DOMAIN}/uploads/payments/${request.screenshotPath}`,
       }));
 
       return res.status(200).json(pendingRequests);
@@ -1191,95 +1191,95 @@ class AdminController {
     }
   };
 
-  payLevelIncome = async (sponsorId, userId) => {
-    let currentSponsorId = sponsorId;
-    let level = 0;
+  // payLevelIncome = async (sponsorId, userId) => {
+  //   let currentSponsorId = sponsorId;
+  //   let level = 0;
 
-    console.log(`Level income array length: ${levelIncome.length}`);
+  //   console.log(`Level income array length: ${levelIncome.length}`);
 
-    const user = await UserModel.findById(userId);
+  //   const user = await UserModel.findById(userId);
 
-    if (!user) {
-      console.log(`User not found for userId: ${userId}`);
-      return;
-    }
+  //   if (!user) {
+  //     console.log(`User not found for userId: ${userId}`);
+  //     return;
+  //   }
 
-    while (level < levelIncome.length && currentSponsorId) {
-      console.log(`Current level: ${level}`);
-      const referrer = await UserModel.findOne({ referalId: currentSponsorId });
+  //   while (level < levelIncome.length && currentSponsorId) {
+  //     console.log(`Current level: ${level}`);
+  //     const referrer = await UserModel.findOne({ referalId: currentSponsorId });
 
-      if (!referrer) {
-        console.log(
-          `Referrer not found for currentSponsorId: ${currentSponsorId}`
-        );
-        break;
-      }
+  //     if (!referrer) {
+  //       console.log(
+  //         `Referrer not found for currentSponsorId: ${currentSponsorId}`
+  //       );
+  //       break;
+  //     }
 
-      console.log(`Referrer found for currentSponsorId: ${currentSponsorId}`);
-      console.log(`UserId: ${userId}`);
+  //     console.log(`Referrer found for currentSponsorId: ${currentSponsorId}`);
+  //     console.log(`UserId: ${userId}`);
 
-      // Add income to the current referrer
-      referrer.walletBalance =
-        parseFloat(referrer.walletBalance) + parseFloat(levelIncome[level]);
-      referrer.totalEarning =
-        parseFloat(referrer.totalEarning) + parseFloat(levelIncome[level]);
-      referrer.subscriptionWalletBalance =
-        parseFloat(referrer.subscriptionWalletBalance) +
-        parseFloat(levelIncome[level]);
+  //     // Add income to the current referrer
+  //     referrer.walletBalance =
+  //       parseFloat(referrer.walletBalance) + parseFloat(levelIncome[level]);
+  //     referrer.totalEarning =
+  //       parseFloat(referrer.totalEarning) + parseFloat(levelIncome[level]);
+  //     referrer.subscriptionWalletBalance =
+  //       parseFloat(referrer.subscriptionWalletBalance) +
+  //       parseFloat(levelIncome[level]);
 
-      console.log(
-        `Added level income to referrer's wallet and subscription wallet balance.`
-      );
+  //     console.log(
+  //       `Added level income to referrer's wallet and subscription wallet balance.`
+  //     );
 
-      if (
-        !referrer.referredUserByLevel[level].some(
-          (entry) => entry.userId === user._id
-        )
-      ) {
-        const referredUserEntry = {
-          userId: user._id,
-          date: new Date(),
-          reward: levelIncome[level],
-        };
+  //     if (
+  //       !referrer.referredUserByLevel[level].some(
+  //         (entry) => entry.userId === user._id
+  //       )
+  //     ) {
+  //       const referredUserEntry = {
+  //         userId: user._id,
+  //         date: new Date(),
+  //         reward: levelIncome[level],
+  //       };
 
-        if (!referrer.referredUserByLevel[level]) {
-          referrer.referredUserByLevel[level] = [];
-        }
-        referrer.referredUserByLevel[level].push(referredUserEntry);
-        referrer.markModified("referredUserByLevel");
+  //       if (!referrer.referredUserByLevel[level]) {
+  //         referrer.referredUserByLevel[level] = [];
+  //       }
+  //       referrer.referredUserByLevel[level].push(referredUserEntry);
+  //       referrer.markModified("referredUserByLevel");
 
-        console.log(`Added new referred user entry for level ${level}.`);
-      }
+  //       console.log(`Added new referred user entry for level ${level}.`);
+  //     }
 
-      // Check if the subscription is over or not by checking if subscriptionWalletBalance is 18 dollars or more
-      if (referrer.subscriptionWalletBalance >= 18) {
-        referrer.walletBalance -= 6;
-        referrer.subscriptionWalletBalance -= 18;
-        referrer.subscriptionWidhrawBalance = 0;
+  //     // Check if the subscription is over or not by checking if subscriptionWalletBalance is 18 dollars or more
+  //     if (referrer.subscriptionWalletBalance >= 18) {
+  //       referrer.walletBalance -= 6;
+  //       referrer.subscriptionWalletBalance -= 18;
+  //       referrer.subscriptionWidhrawBalance = 0;
 
-        referrer.subscriptionHistory.push({
-          date: new Date(),
-          amount: 6,
-        });
+  //       referrer.subscriptionHistory.push({
+  //         date: new Date(),
+  //         amount: 6,
+  //       });
 
-        console.log(
-          `Subscription is over, resetting subscriptionWalletBalance and subscriptionWidhrawBalance.`
-        );
-      }
+  //       console.log(
+  //         `Subscription is over, resetting subscriptionWalletBalance and subscriptionWidhrawBalance.`
+  //       );
+  //     }
 
-      await referrer.save();
+  //     await referrer.save();
 
-      // Stop if admin is reached
-      if (referrer.referalId === "FTR000001") {
-        console.log(`Reached admin level, stopping the process.`);
-        break;
-      }
+  //     // Stop if admin is reached
+  //     if (referrer.referalId === "FTR000001") {
+  //       console.log(`Reached admin level, stopping the process.`);
+  //       break;
+  //     }
 
-      // Move to next level's sponsor
-      currentSponsorId = referrer.sponsorId; // or referrer.referredById if using that name
-      level++;
-    }
-  };
+  //     // Move to next level's sponsor
+  //     currentSponsorId = referrer.sponsorId; // or referrer.referredById if using that name
+  //     level++;
+  //   }
+  // };
 
   // checkAndPayReferBonusAmount = async (referrer, directTeamCount) => {
   //   if (
@@ -1957,8 +1957,6 @@ class AdminController {
   //   }
   // };
 
- 
-
   checkAndPayReferBonusAmount = async (referrer, directTeamCount, session) => {
     const bonusTiers = [
       { min: 10, max: 20, amount: 30, flag: "referBonus1Paid" },
@@ -2039,7 +2037,11 @@ class AdminController {
         },
       });
 
-      if (referrer.referalId === "FTR000001") break; // stop at admin
+      if (
+        !referrer.referalId ||
+        referrer.referalId == null
+      )
+        break; // stop at admin
 
       currentSponsorId = referrer.sponsorId;
       level++;

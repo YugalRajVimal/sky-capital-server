@@ -37,11 +37,11 @@ const userSchema = new mongoose.Schema(
     },
     sponsorId: {
       type: String,
-      required: true,
+
     },
     sponsorName: {
       type: String,
-      required: true,
+
     },
     otp: {
       type: String,
