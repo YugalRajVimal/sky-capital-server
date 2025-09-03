@@ -125,4 +125,8 @@ adminRouter.delete("/delete-notification", jwtAuth, (req, res) => {
   adminController.deleteNotification(req, res);
 });
 
+adminRouter.put("/update-users/:id", jwtAuth, (req, res) => {
+  adminController.updateUserDetails(req, res);
+});
+
 export default adminRouter;

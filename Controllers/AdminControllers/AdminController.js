@@ -2037,11 +2037,7 @@ class AdminController {
         },
       });
 
-      if (
-        !referrer.referalId ||
-        referrer.referalId == null
-      )
-        break; // stop at admin
+      if (!referrer.referalId || referrer.referalId == null) break; // stop at admin
 
       currentSponsorId = referrer.sponsorId;
       level++;
@@ -2411,6 +2407,42 @@ class AdminController {
       return res
         .status(200)
         .json({ message: "Notification deleted successfully." });
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ message: "Internal Server Error" });
+    }
+  };
+
+  updateUserDetails = async (req, res) => {
+    if (req.user.role !== "Admin") {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    const { id: userId } = req.params; // Assuming the user ID to update is passed as a URL parameter (e.g., /api/admin/users/:id)
+    const { name, email, phoneNo } = req.body; // The data to update will be in the request body
+
+    try {
+      const user = await UserModel.findById(userId);
+
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      if (!name || !email || !phoneNo) {
+        return res
+          .status(400)
+          .json({ message: "All fields (name, email, phoneNo) are required." });
+      }
+
+      // Update fields if they are provided in the request body
+      user.name = name;
+      user.email = email;
+      user.phoneNo = phoneNo;
+      await user.save();
+
+      return res
+        .status(200)
+        .json({ message: "User details updated successfully.", user });
     } catch (error) {
       console.error(error);
       return res.status(500).json({ message: "Internal Server Error" });
