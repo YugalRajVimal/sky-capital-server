@@ -92,8 +92,10 @@ class CustomerController {
 
       let ancestry;
 
+      let existingSponsor;
+
       if (sponsorId) {
-        const existingSponsor = await UserModel.findOne({
+        existingSponsor = await UserModel.findOne({
           referalId: sponsorId,
         });
 
@@ -110,13 +112,12 @@ class CustomerController {
         ancestry = [newReferralId];
       }
 
-
       const hashedPassword = await bcrypt.hash(password, 10);
       const newUser = new UserModel({
         email: lowerCaseEmail,
         password: hashedPassword,
         sponsorId: sponsorId ? sponsorId : null,
-        sponsorName: sponsorId ? existingSponsor.name : null,
+        sponsorName: sponsorId ? existingSponsor?.name : null,
         name,
         phoneNo,
         role: "Customer",
